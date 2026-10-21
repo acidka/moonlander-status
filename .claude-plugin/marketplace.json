@@ -1,0 +1,11 @@
+{
+  "name": "keyboard",
+  "owner": { "name": "acidka" },
+  "plugins": [
+    {
+      "name": "moonlander-status",
+      "source": "./mod/moonlander-status",
+      "description": "Lights selected ZSA Moonlander keys by Claude's status."
+    }
+  ]
+}
