@@ -21,6 +21,7 @@ test('keys follow Claude from idle through a tool call back to idle', async ($, 
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   on('turn.start', async ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', async ($, e) => ({ text: e.answer }))
+  on('classic.Notification', async () => ({}))
 
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
   expect(writes).toEqual(['0 255 40 solid 1'])
@@ -38,6 +39,13 @@ test('keys follow Claude from idle through a tool call back to idle', async ($, 
     '217 90 30 breathe 2',  // thinking again
     '0 255 40 solid 1',     // idle
   ])
+
+  // Only the main thread's permission dialog blinks the keys.
+  await $.classic.Notification({ message: 'idle', notification_type: 'idle_prompt' })
+  await $.classic.Notification({ message: 'perm', notification_type: 'permission_prompt', agent_id: 'sub' })
+  expect(writes.length).toBe(5)
+  await $.classic.Notification({ message: 'perm', notification_type: 'permission_prompt' })
+  expect(writes.at(-1)).toBe('255 200 0 blink 4') // waiting
 
   const said = await $.command.run({
     command: 'moonlander', args: '', origin: { kind: 'human' },

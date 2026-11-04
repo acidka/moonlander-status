@@ -102,11 +102,15 @@ export const register: Register = on => {
     }
   })
 
-  // The permission dialog is about to open: Claude waits on the person. This
-  // fires only for a real dialog, never for auto mode's classifier (which a
-  // tool.check 'ask' cannot be told apart from).
-  on('classic.PermissionRequest', async ($, e, next) => {
-    if (e.agent_id === undefined) await show($, 'waiting')
+  // The permission dialog opened: Claude waits on the person. This fires only
+  // for a real dialog, never for auto mode's classifier (which a tool.check
+  // 'ask' cannot be told apart from). Not classic.PermissionRequest: a managed
+  // security plugin decides that event from an outer tier and jumps past every
+  // user hook, so ours was skipped with a notice in chat each time.
+  on('classic.Notification', async ($, e, next) => {
+    if (e.notification_type === 'permission_prompt' && e.agent_id === undefined) {
+      await show($, 'waiting')
+    }
     return next(e)
   })
 
