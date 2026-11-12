@@ -17,7 +17,7 @@ test('keys follow Claude from idle through a tool call back to idle', async ($, 
   on('ui.status', async () => ({ value: undefined }))
   on('ui.log', async () => ({ value: undefined }))
   on('tool.call', async () => ({ result: 'ok' }))
-  on('tool.check', async () => ({ decision: 'ask' as const })) // auto mode: not a dialog
+  on('tool.check', async () => ({ decision: 'ask' as const })) // no approver: nobody asked
   on('session.start', async ($, e) => ({ cwd: e.cwd }))
   on('turn.start', async ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', async ($, e) => ({ text: e.answer }))
@@ -54,9 +54,12 @@ test('keys follow Claude from idle through a tool call back to idle', async ($, 
   expect(JSON.stringify(said)).toContain('Moonlander connected')
 })
 
-// Permission dialog: tool.check's ask, settled by a person, outside auto mode.
-for (const [mode, blinks] of [['default', true], ['auto', false]] as const) {
-  test(`a permission ask in ${mode} mode ${blinks ? 'blinks' : 'leaves'} the keys`, async ($, on) => {
+// Permission dialog: tool.check's ask, settled by a person on the main loop.
+for (const [label, extra, blinks] of [
+  ['the main loop', {}, true],
+  ['a subagent', { agentId: 'sub' }, false],
+] as const) {
+  test(`a permission ask in ${label} ${blinks ? 'blinks' : 'leaves'} the keys`, async ($, on) => {
     mock.env(on, { HOME: '/home/me' })
     const writes: string[] = []
     on('fs.write', async ($, e) => { writes.push(e.text.trim()); return { value: undefined } })
@@ -65,12 +68,10 @@ for (const [mode, blinks] of [['default', true], ['auto', false]] as const) {
     on('command.register', async () => ({ value: {} }))
     on('ui.status', async () => ({ value: undefined }))
     on('session.start', async ($, e) => ({ cwd: e.cwd }))
-    on('classic.UserPromptSubmit', async () => ({}))
     on('tool.check', async () => ({ decision: 'ask' as const }))
 
     await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
-    await $.classic.UserPromptSubmit({ prompt: 'hi', permission_mode: mode } as never)
-    await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, approver: 'person' } as never)
+    await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, approver: 'person', ...extra } as never)
     expect(writes.at(-1) === '255 200 0 blink 4').toBe(blinks)
   })
 }

@@ -18,10 +18,6 @@ const ASKS_PERSON = new Set(['AskUserQuestion', 'ExitPlanMode'])
 let stateFile: string | undefined
 let current: State | undefined
 let toolsRunning = 0
-let permissionMode = 'default'
-
-// Modes in which the engine's own ask opens no dialog.
-const NO_DIALOG_MODES = new Set(['auto', 'dontAsk', 'bypassPermissions'])
 
 // Writes the state file the watcher pushes to the keyboard; skips repeats.
 async function show($: EngineInterface, state: State) {
@@ -106,33 +102,22 @@ export const register: Register = on => {
     }
   })
 
-  // Remember the permission mode: classic events carry it, the engine has no
-  // getter. It decides who settles an ask (auto: the classifier, not you).
-  on('classic.*', async ($, e, next) => {
-    const mode = (e as { permission_mode?: unknown }).permission_mode
-    if (typeof mode === 'string') permissionMode = mode
-    return next(e)
-  })
-
   // The permission dialog is about to open. tool.check resolves the verdict
-  // right before the dialog, so the keys blink as it appears. Only an ask a
-  // person settles counts: in auto mode the classifier settles the engine's own
-  // asks (a hook's ask, marked by `plugin`, still goes to you); dontAsk and
-  // bypass never ask.
+  // right before the dialog, so the keys blink as it appears. The permission
+  // mode is not read: the engine has no getter, and the classic events that
+  // carry it are often passed over by security plugins above this one. So in
+  // auto mode an ask the classifier then settles blinks too.
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
-    if (
-      verdict.decision === 'ask' && e.agentId === undefined && e.approver === 'person'
-      && (verdict.plugin !== undefined || !NO_DIALOG_MODES.has(permissionMode))
-    ) {
+    if (verdict.decision === 'ask' && e.agentId === undefined && e.approver === 'person') {
       await show($, 'waiting')
     }
     return verdict
   })
 
-  // Fallback for a dialog tool.check could not tell apart (auto mode's
-  // classifier handing over to you). Claude Code sends this notification only
-  // after ~6 s without input, so it is late and not the main signal.
+  // Fallback for a dialog tool.check did not see. Claude Code sends this
+  // notification only after ~6 s without input, so it is late and not the
+  // main signal.
   on('classic.Notification', async ($, e, next) => {
     if (e.notification_type === 'permission_prompt' && e.agent_id === undefined) {
       await show($, 'waiting')
