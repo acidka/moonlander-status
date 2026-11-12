@@ -53,3 +53,24 @@ test('keys follow Claude from idle through a tool call back to idle', async ($, 
   } as never)
   expect(JSON.stringify(said)).toContain('Moonlander connected')
 })
+
+// Permission dialog: tool.check's ask, settled by a person, outside auto mode.
+for (const [mode, blinks] of [['default', true], ['auto', false]] as const) {
+  test(`a permission ask in ${mode} mode ${blinks ? 'blinks' : 'leaves'} the keys`, async ($, on) => {
+    mock.env(on, { HOME: '/home/me' })
+    const writes: string[] = []
+    on('fs.write', async ($, e) => { writes.push(e.text.trim()); return { value: undefined } })
+    mock.clock(on)
+    on('fs.read', async () => ({ value: `connected ${Math.floor(Date.now() / 1000)}\n` }))
+    on('command.register', async () => ({ value: {} }))
+    on('ui.status', async () => ({ value: undefined }))
+    on('session.start', async ($, e) => ({ cwd: e.cwd }))
+    on('classic.UserPromptSubmit', async () => ({}))
+    on('tool.check', async () => ({ decision: 'ask' as const }))
+
+    await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+    await $.classic.UserPromptSubmit({ prompt: 'hi', permission_mode: mode } as never)
+    await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, approver: 'person' } as never)
+    expect(writes.at(-1) === '255 200 0 blink 4').toBe(blinks)
+  })
+}
