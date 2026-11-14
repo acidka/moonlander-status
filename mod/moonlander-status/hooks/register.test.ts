@@ -54,10 +54,16 @@ test('keys follow Claude from idle through a tool call back to idle', async ($, 
   expect(JSON.stringify(said)).toContain('Moonlander connected')
 })
 
-// Permission dialog: tool.check's ask, settled by a person on the main loop.
-for (const [label, extra, blinks] of [
-  ['the main loop', {}, true],
-  ['a subagent', { agentId: 'sub' }, false],
+// Permission dialog: tool.check's ask on a real call, settled by a person on
+// the main loop. In auto mode the classifier settles core's asks, so only a
+// hook's ask blinks.
+for (const [label, extra, opts, blinks] of [
+  ['the main loop', { tool_use_id: 'u1' }, {}, true],
+  ['a subagent', { tool_use_id: 'u1', agentId: 'sub' }, {}, false],
+  ['a query (no tool_use_id)', {}, {}, false],
+  ['auto mode', { tool_use_id: 'u1' }, { auto: true }, false],
+  ['auto mode from a hook', { tool_use_id: 'u1' }, { auto: true, plugin: 'guard' }, true],
+  ['auto mode, exited', { tool_use_id: 'u1' }, { auto: true, exit: true }, true],
 ] as const) {
   test(`a permission ask in ${label} ${blinks ? 'blinks' : 'leaves'} the keys`, async ($, on) => {
     mock.env(on, { HOME: '/home/me' })
@@ -68,9 +74,15 @@ for (const [label, extra, blinks] of [
     on('command.register', async () => ({ value: {} }))
     on('ui.status', async () => ({ value: undefined }))
     on('session.start', async ($, e) => ({ cwd: e.cwd }))
-    on('tool.check', async () => ({ decision: 'ask' as const }))
+    on('prompt.attachment', async ($, e) => ({ text: e.text }))
+    const plugin = 'plugin' in opts ? opts.plugin : undefined
+    on('tool.check', async () => ({ decision: 'ask' as const, ...(plugin ? { plugin } : {}) }))
 
     await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+    const attach = (type: string) =>
+      $.prompt.attachment({ type, text: type, origin: { kind: 'engine' } } as never)
+    if ('auto' in opts) await attach('auto_mode')
+    if ('exit' in opts) await attach('auto_mode_exit')
     await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, approver: 'person', ...extra } as never)
     expect(writes.at(-1) === '255 200 0 blink 4').toBe(blinks)
   })
