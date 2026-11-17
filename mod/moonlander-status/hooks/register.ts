@@ -18,10 +18,6 @@ const ASKS_PERSON = new Set(['AskUserQuestion', 'ExitPlanMode'])
 let stateFile: string | undefined
 let current: State | undefined
 let toolsRunning = 0
-// Whether the main loop is in auto mode, from the engine's auto_mode and
-// auto_mode_exit reminders: there the classifier, not a person, settles a
-// core ask.
-let autoMode = false
 
 // Writes the state file the watcher pushes to the keyboard; skips repeats.
 async function show($: EngineInterface, state: State) {
@@ -72,7 +68,6 @@ export const register: Register = on => {
     const home = (await $.env.get('HOME')) ?? '/tmp'
     stateFile = `${home}/.cache/claude-moonlander/state`
     current = undefined
-    autoMode = false
     await show($, 'idle')
 
     await showHealth($)
@@ -107,41 +102,22 @@ export const register: Register = on => {
     }
   })
 
-  // The engine tells the model when auto mode starts and ends. An engine
-  // event, not a classic one, so security plugins above cannot pass it over.
-  on('prompt.attachment', async ($, e, next) => {
-    if (e.agentId === undefined && e.origin.kind === 'engine') {
-      if (e.type === 'auto_mode') autoMode = true
-      else if (e.type === 'auto_mode_exit') autoMode = false
-    }
-    return next(e)
-  })
-
   // The permission dialog is about to open. tool.check resolves the verdict
   // right before the dialog, so the keys blink as it appears. Only a real
-  // call (a query has no tool_use_id) on the main loop a person answers; in
-  // auto mode only a hook's ask (verdict.plugin), since the classifier
-  // settles core's own.
+  // call (a query has no tool_use_id) on the main loop a person answers.
+  // The permission mode is not known here: the events that carry it
+  // (prompt.attachment, classic hooks) are passed over by the org's security
+  // plugin, which shows a "hook was skipped" notice. So in auto mode an ask
+  // the classifier then settles blinks too.
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
     if (
       verdict.decision === 'ask' && e.tool_use_id !== undefined
       && e.agentId === undefined && e.approver === 'person'
-      && (!autoMode || verdict.plugin !== undefined)
     ) {
       await show($, 'waiting')
     }
     return verdict
-  })
-
-  // Fallback for a dialog tool.check did not see. Claude Code sends this
-  // notification only after ~6 s without input, so it is late and not the
-  // main signal.
-  on('classic.Notification', async ($, e, next) => {
-    if (e.notification_type === 'permission_prompt' && e.agent_id === undefined) {
-      await show($, 'waiting')
-    }
-    return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {

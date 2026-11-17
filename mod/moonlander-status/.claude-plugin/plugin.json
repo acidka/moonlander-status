@@ -1,6 +1,6 @@
 {
   "name": "moonlander-status",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Lights selected ZSA Moonlander keys by Claude's status: idle, thinking, running a tool, waiting for you, error.",
   "author": { "name": "acidka" },
   "license": "GPL-2.0-or-later"
