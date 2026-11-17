@@ -4,6 +4,7 @@ test('keys follow Claude from idle through a tool call back to idle', async ($, 
   mock.env(on, { HOME: '/home/me' })
   const writes: string[] = []
   on('fs.write', async ($, e) => {
+    if (e.path.endsWith('probe.log')) return { value: undefined } // TEMPORARY probe
     expect(e.path).toBe('/home/me/.cache/claude-moonlander/state')
     writes.push(e.text.trim())
     return { value: undefined }
@@ -56,7 +57,10 @@ for (const [label, extra, blinks] of [
   test(`a permission ask in ${label} ${blinks ? 'blinks' : 'leaves'} the keys`, async ($, on) => {
     mock.env(on, { HOME: '/home/me' })
     const writes: string[] = []
-    on('fs.write', async ($, e) => { writes.push(e.text.trim()); return { value: undefined } })
+    on('fs.write', async ($, e) => {
+      if (!e.path.endsWith('probe.log')) writes.push(e.text.trim()) // TEMPORARY probe
+      return { value: undefined }
+    })
     mock.clock(on)
     on('fs.read', async () => ({ value: `connected ${Math.floor(Date.now() / 1000)}\n` }))
     on('command.register', async () => ({ value: {} }))

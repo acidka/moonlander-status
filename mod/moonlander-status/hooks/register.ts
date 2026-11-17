@@ -1,4 +1,5 @@
 import type { EngineInterface, Register } from 'claude-code'
+import { register as registerProbe, init as probeInit, log as probeLog } from './probe.ts' // TEMPORARY
 
 // What the keys show for each of Claude's states: r, g, b, effect.
 // The firmware draws the effect, so a color change here needs no reflash.
@@ -63,12 +64,14 @@ async function showHealth($: EngineInterface) {
 }
 
 export const register: Register = on => {
+  registerProbe(on) // TEMPORARY
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     const home = (await $.env.get('HOME')) ?? '/tmp'
     stateFile = `${home}/.cache/claude-moonlander/state`
     current = undefined
     await show($, 'idle')
+    await probeInit($) // TEMPORARY
 
     await showHealth($)
     $.clock.every(30_000, () => { void showHealth($) })
@@ -91,12 +94,15 @@ export const register: Register = on => {
   })
 
   on('tool.call', async ($, e, next) => {
+    const id = (e as { tool_use_id?: string }).tool_use_id // TEMPORARY probe
+    await probeLog($, `call.start ${String(e.tool)} ${id} agent=${e.agentId ?? '-'}`)
     if (e.agentId !== undefined) return next(e)
     toolsRunning++
     await show($, ASKS_PERSON.has(String(e.tool)) ? 'waiting' : 'tool')
     try {
       return await next(e)
     } finally {
+      await probeLog($, `call.end ${String(e.tool)} ${id}`) // TEMPORARY
       toolsRunning = Math.max(0, toolsRunning - 1)
       await show($, toolsRunning > 0 ? 'tool' : 'thinking')
     }
@@ -111,6 +117,7 @@ export const register: Register = on => {
   // the classifier then settles blinks too.
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
+    await probeLog($, `check ${e.tool} ${e.tool_use_id ?? 'query'} agent=${e.agentId ?? '-'} approver=${e.approver ?? '-'} -> ${JSON.stringify(verdict)}`) // TEMPORARY
     if (
       verdict.decision === 'ask' && e.tool_use_id !== undefined
       && e.agentId === undefined && e.approver === 'person'
